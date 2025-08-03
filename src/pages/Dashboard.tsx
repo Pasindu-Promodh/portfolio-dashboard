@@ -12,6 +12,7 @@ import {
   Container,
   Divider,
 } from "@mui/material";
+
 import {
   Refresh,
   Logout,
@@ -126,22 +127,42 @@ export default function Dashboard() {
         sx={{ py: { xs: 4, md: 6 }, px: { xs: 2, sm: 3, md: 4, lg: 6 } }}
       >
         {/* Header */}
-        <Grid
-          container
+        <Box
+          display="flex"
+          flexDirection={{ xs: "column", sm: "row" }}
           alignItems="center"
           justifyContent="space-between"
-          sx={{
-            mb: { xs: 4, md: 5 },
-            flexDirection: { xs: "column", sm: "row" },
-          }}
+          mb={{ xs: 4, md: 5 }}
+          gap={2}
         >
-          <Grid item xs={12} sm="auto">
+          <Box flexGrow={1}>
+            <Typography
+              variant="h3"
+              sx={{
+                textAlign: { xs: "center", sm: "left" },
+                fontWeight: "bold",
+                color: "primary.main",
+                letterSpacing: "-0.5px",
+                textShadow: "1px 1px 4px rgba(0,0,0,0.1)",
+                fontSize: { xs: "1.8rem", sm: "2.2rem", md: "3rem" },
+              }}
+            >
+              Dashboard
+            </Typography>
+          </Box>
+
+          <Box
+            display="flex"
+            gap={2}
+            mt={{ xs: 2, sm: 0 }}
+            justifyContent={{ xs: "center", sm: "flex-end" }}
+            flexWrap="wrap"
+          >
             <Button
               variant="contained"
               startIcon={<Refresh />}
               onClick={fetchVisitors}
               disabled={loading}
-              fullWidth={false}
               sx={{
                 borderRadius: 8,
                 px: { xs: 3, md: 4 },
@@ -154,37 +175,16 @@ export default function Dashboard() {
                 transition: "all 0.3s ease",
                 boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
                 fontSize: { xs: "0.85rem", md: "1rem" },
-                mb: { xs: 2, sm: 0 },
               }}
             >
               {loading ? "Refreshing..." : "Refresh"}
             </Button>
-          </Grid>
 
-          <Grid item xs={12} sm="auto">
-            <Typography
-              variant="h3"
-              align="center"
-              sx={{
-                fontWeight: "bold",
-                color: "primary.main",
-                letterSpacing: "-0.5px",
-                textShadow: "1px 1px 4px rgba(0,0,0,0.1)",
-                fontSize: { xs: "1.8rem", sm: "2.2rem", md: "3rem" },
-                my: { xs: 2, sm: 0 },
-              }}
-            >
-              Dashboard
-            </Typography>
-          </Grid>
-
-          <Grid item xs={12} sm="auto">
             <Button
               variant="outlined"
               color="error"
               startIcon={<Logout />}
               onClick={logout}
-              fullWidth={false}
               sx={{
                 borderRadius: 8,
                 px: { xs: 3, md: 4 },
@@ -199,106 +199,101 @@ export default function Dashboard() {
                 transition: "all 0.3s ease",
                 boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
                 fontSize: { xs: "0.85rem", md: "1rem" },
-                mb: { xs: 2, sm: 0 },
               }}
             >
               Logout
             </Button>
-          </Grid>
-        </Grid>
+          </Box>
+        </Box>
 
         {/* Action Icons */}
         <Grid
           container
-          spacing={{ xs: 2, md: 3 }}
+          spacing={1}
           justifyContent="center"
           sx={{ mb: { xs: 4, md: 5 } }}
         >
-          {[
-            {
-              icon: (
-                <Email
-                  sx={{
-                    color: "primary.main",
-                    fontSize: { xs: 24, sm: 28, md: 32 },
-                  }}
-                />
-              ),
-              count: actionCounts.email,
-              label: "Email",
-            },
-            {
-              icon: (
-                <LinkedIn
-                  sx={{
-                    color: "primary.main",
-                    fontSize: { xs: 24, sm: 28, md: 32 },
-                  }}
-                />
-              ),
-              count: actionCounts.linkedin,
-              label: "LinkedIn",
-            },
-            {
-              icon: (
-                <GitHub
-                  sx={{
-                    color: "primary.main",
-                    fontSize: { xs: 24, sm: 28, md: 32 },
-                  }}
-                />
-              ),
-              count: actionCounts.github,
-              label: "GitHub",
-            },
-            {
-              icon: (
-                <Description
-                  sx={{
-                    color: "primary.main",
-                    fontSize: { xs: 24, sm: 28, md: 32 },
-                  }}
-                />
-              ),
-              count: actionCounts.resume,
-              label: "Resume",
-            },
-          ].map((item, idx) => (
-            <Grid item key={idx} xs={6} sm={3} md={2} lg={1.5}>
-              <Tooltip title={item.label}>
-                <IconButton
-                  sx={{
-                    bgcolor: "background.paper",
-                    borderRadius: 3,
-                    p: { xs: 1.2, sm: 1.5, md: 2 },
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                    "&:hover": {
-                      transform: "scale(1.1)",
-                      bgcolor: "primary.light",
-                    },
-                    transition: "all 0.3s ease",
-                    width: "100%",
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                  }}
-                >
-                  {item.icon}
-                  <Typography
-                    variant="subtitle1"
+          <Box
+            sx={{
+              display: "flex",
+              gap: 1,
+              width: "100%",
+              justifyContent: "center",
+            }}
+          >
+            {[
+              {
+                icon: (
+                  <Email
+                    sx={{ color: "primary.main", fontSize: { xs: 24, md: 30 } }}
+                  />
+                ),
+                count: actionCounts.email,
+                label: "Email",
+              },
+              {
+                icon: (
+                  <LinkedIn
+                    sx={{ color: "primary.main", fontSize: { xs: 24, md: 30 } }}
+                  />
+                ),
+                count: actionCounts.linkedin,
+                label: "LinkedIn",
+              },
+              {
+                icon: (
+                  <GitHub
+                    sx={{ color: "primary.main", fontSize: { xs: 24, md: 30 } }}
+                  />
+                ),
+                count: actionCounts.github,
+                label: "GitHub",
+              },
+              {
+                icon: (
+                  <Description
+                    sx={{ color: "primary.main", fontSize: { xs: 24, md: 30 } }}
+                  />
+                ),
+                count: actionCounts.resume,
+                label: "Resume",
+              },
+            ].map((item, idx) => (
+              <Box
+                key={idx}
+                sx={{ flex: "0 0 auto", maxWidth: { xs: "20%", md: "150px" } }}
+              >
+                <Tooltip title={item.label}>
+                  <IconButton
                     sx={{
-                      ml: 1,
-                      fontWeight: "bold",
-                      color: "text.primary",
-                      fontSize: { xs: "0.8rem", sm: "0.9rem", md: "1rem" },
+                      bgcolor: "background.paper",
+                      borderRadius: 3,
+                      p: 1.5,
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                      display: "flex",
+                      alignItems: "center",
+                      "&:hover": {
+                        transform: "scale(1.1)",
+                        bgcolor: "primary.light",
+                      },
                     }}
                   >
-                    {item.count}
-                  </Typography>
-                </IconButton>
-              </Tooltip>
-            </Grid>
-          ))}
+                    {item.icon}
+                    <Typography
+                      variant="subtitle1"
+                      sx={{
+                        ml: 1,
+                        fontWeight: 600,
+                        fontSize: { xs: "0.85rem", md: "1rem" },
+                      }}
+                    >
+                      {item.count}
+                    </Typography>
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            ))}
+          </Box>
         </Grid>
 
         {/* Project Views */}
@@ -327,7 +322,19 @@ export default function Dashboard() {
             </Typography>
             <Grid container spacing={{ xs: 1.5, md: 2 }} alignItems="stretch">
               {projectViews.map((pv, idx) => (
-                <Grid item xs={12} sm={6} md={4} lg={3} key={idx}>
+                <Box
+                  key={idx}
+                  sx={{
+                    width: {
+                      xs: "100%",
+                      sm: "50%",
+                      md: "33.33%",
+                      lg: "25%",
+                    },
+                    boxSizing: "border-box",
+                    p: 1,
+                  }}
+                >
                   <Box
                     sx={{
                       border: "1px solid",
@@ -342,7 +349,7 @@ export default function Dashboard() {
                         boxShadow: "0 8px 20px rgba(0,0,0,0.1)",
                         bgcolor: "primary.light",
                       },
-                      minHeight: { xs: 100, sm: 110, md: 120 }, // Reduced min height for compactness
+                      minHeight: { xs: 100, sm: 110, md: 120 },
                       display: "flex",
                       flexDirection: "column",
                       justifyContent: "space-between",
@@ -390,7 +397,7 @@ export default function Dashboard() {
                       {pv.count} views
                     </Typography>
                   </Box>
-                </Grid>
+                </Box>
               ))}
             </Grid>
           </CardContent>
