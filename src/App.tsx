@@ -51,7 +51,7 @@
 
 
 
-// App.tsx
+// App.ts
 
 function AppContent() {
 
