@@ -87,92 +87,92 @@ export default function Dashboard() {
   const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
 
   const fetchVisitors = useCallback(async () => {
-  setLoading(true);
-  try {
-    const snapshot = await getDocs(collection(db, "visitors"));
-    const projectViewCount: Record<string, ProjectView> = {};
-    const actions = { email: 0, linkedin: 0, github: 0, resume: 0 };
+    setLoading(true);
+    try {
+      const snapshot = await getDocs(collection(db, "visitors"));
+      const projectViewCount: Record<string, ProjectView> = {};
+      const actions = { email: 0, linkedin: 0, github: 0, resume: 0 };
 
-    const visitorData = await Promise.all(
-      snapshot.docs.map(async (docSnap) => {
-        const logsSnap = await getDocs(
-          collection(db, "visitors", docSnap.id, "logs")
-        );
-        
-        // Filter logs by date BEFORE processing them
-        const allLogs = logsSnap.docs.map((log) => ({
-          ...log.data(),
-          action: log.data().action,
-          timestamp: log.data().timestamp,
-          projectId: log.data().projectId,
-          projectName: log.data().projectName,
-        }));
-        
-        const filteredLogs = filterByDate(allLogs, "timestamp");
-        
-        const logs = filteredLogs
-          .map((logData) => {
-            const { action, timestamp, projectId, projectName } = logData;
+      const visitorData = await Promise.all(
+        snapshot.docs.map(async (docSnap) => {
+          const logsSnap = await getDocs(
+            collection(db, "visitors", docSnap.id, "logs")
+          );
 
-            // Only count actions and projects from filtered logs
-            if (action === "project" && projectId && projectName) {
-              const key = `${projectId}|${projectName}`;
-              if (!projectViewCount[key]) {
-                projectViewCount[key] = { projectId, projectName, count: 0 };
+          // Filter logs by date BEFORE processing them
+          const allLogs = logsSnap.docs.map((log) => ({
+            ...log.data(),
+            action: log.data().action,
+            timestamp: log.data().timestamp,
+            projectId: log.data().projectId,
+            projectName: log.data().projectName,
+          }));
+
+          const filteredLogs = filterByDate(allLogs, "timestamp");
+
+          const logs = filteredLogs
+            .map((logData) => {
+              const { action, timestamp, projectId, projectName } = logData;
+
+              // Only count actions and projects from filtered logs
+              if (action === "project" && projectId && projectName) {
+                const key = `${projectId}|${projectName}`;
+                if (!projectViewCount[key]) {
+                  projectViewCount[key] = { projectId, projectName, count: 0 };
+                }
+                projectViewCount[key].count++;
               }
-              projectViewCount[key].count++;
-            }
 
-            if (actions[action as keyof typeof actions] !== undefined) {
-              actions[action as keyof typeof actions]++;
-            }
+              if (actions[action as keyof typeof actions] !== undefined) {
+                actions[action as keyof typeof actions]++;
+              }
 
-            return { action, timestamp, projectId, projectName };
-          })
-          .sort((a, b) => {
-            const aTime = a.timestamp?.toDate?.()?.getTime?.() || 0;
-            const bTime = b.timestamp?.toDate?.()?.getTime?.() || 0;
-            return bTime - aTime;
-          });
+              return { action, timestamp, projectId, projectName };
+            })
+            .sort((a, b) => {
+              const aTime = a.timestamp?.toDate?.()?.getTime?.() || 0;
+              const bTime = b.timestamp?.toDate?.()?.getTime?.() || 0;
+              return bTime - aTime;
+            });
 
-        return {
-          id: docSnap.id,
-          firstVisit: docSnap.data().firstVisit,
-          logs,
-        };
-      })
-    );
+          return {
+            id: docSnap.id,
+            firstVisit: docSnap.data().firstVisit,
+            logs,
+          };
+        })
+      );
 
-    // Filter visitors by their first visit date
-    const filteredVisitors = filterByDate(visitorData, "firstVisit");
+      // Filter visitors by their first visit date
+      const filteredVisitors = filterByDate(visitorData, "firstVisit");
 
-    // Sort filtered visitors
-    filteredVisitors.sort((a, b) => {
-      const aTime =
-        a.logs[0]?.timestamp?.toDate?.()?.getTime?.() ||
-        a.firstVisit?.toDate?.()?.getTime?.() ||
-        0;
-      const bTime =
-        b.logs[0]?.timestamp?.toDate?.()?.getTime?.() ||
-        b.firstVisit?.toDate?.()?.getTime?.() ||
-        0;
-      return bTime - aTime;
-    });
+      // Sort filtered visitors
+      filteredVisitors.sort((a, b) => {
+        const aTime =
+          a.logs[0]?.timestamp?.toDate?.()?.getTime?.() ||
+          a.firstVisit?.toDate?.()?.getTime?.() ||
+          0;
+        const bTime =
+          b.logs[0]?.timestamp?.toDate?.()?.getTime?.() ||
+          b.firstVisit?.toDate?.()?.getTime?.() ||
+          0;
+        return bTime - aTime;
+      });
 
-    setProjectViews(
-      Object.values(projectViewCount).sort((a, b) => b.count - a.count)
-    );
-    setActionCounts(actions);
-    setVisitors(filteredVisitors);
-  } catch (error) {
-    console.error("Error fetching visitors:", error);
-    setSnackbarMessage("Failed to fetch visitors");
-    setSnackbarSeverity("error");
-    setSnackbarOpen(true);
-  } finally {
-    setLoading(false);
-  }
-}, [dateFilter, customStartDate, customEndDate]); // Add dependencies here
+      setProjectViews(
+        Object.values(projectViewCount).sort((a, b) => b.count - a.count)
+      );
+      setActionCounts(actions);
+      setVisitors(filteredVisitors);
+    } catch (error) {
+      console.error("Error fetching visitors:", error);
+      setSnackbarMessage("Failed to fetch visitors");
+      setSnackbarSeverity("error");
+      setSnackbarOpen(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [dateFilter, customStartDate, customEndDate]); // Add dependencies here
 
   const deleteVisitor = useCallback(async (visitorId: string) => {
     const confirmDelete = window.confirm(
@@ -338,12 +338,6 @@ export default function Dashboard() {
       >
         {/* Header */}
         <Box
-          display="flex"
-          flexDirection={{ xs: "column", sm: "row" }}
-          alignItems="center"
-          justifyContent="space-between"
-          mb={4}
-          gap={2}
           sx={{
             p: 3,
             bgcolor: "background.paper",
@@ -351,153 +345,125 @@ export default function Dashboard() {
             boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
             border: "1px solid",
             borderColor: "grey.200",
+            mb: 4,
           }}
         >
-          <Typography
-            variant="h3"
-            sx={{
-              fontWeight: 700,
-              background: "linear-gradient(45deg, #1976d2 30%, #42a5f5 90%)",
-              backgroundClip: "text",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              fontSize: { xs: "1.8rem", sm: "2.2rem", md: "3rem" },
-              textAlign: { xs: "center", sm: "left" },
-              letterSpacing: "-0.02em",
-            }}
-          >
-            Dashboard
-          </Typography>
-
-          <Box display="flex" gap={2} flexWrap="wrap">
-            <Button
-              variant="contained"
-              startIcon={<Refresh />}
-              onClick={fetchVisitors}
-              disabled={loading}
-              sx={{
-                borderRadius: 2,
-                px: 3,
-                py: 1.2,
-                fontWeight: 600,
-                textTransform: "none",
-                boxShadow: "0 4px 12px rgba(25, 118, 210, 0.3)",
-                "&:hover": {
-                  boxShadow: "0 6px 16px rgba(25, 118, 210, 0.4)",
-                  transform: "translateY(-1px)",
-                },
-                transition: "all 0.3s ease",
-              }}
-            >
-              {loading ? "Refreshing..." : "Refresh"}
-            </Button>
-            <Button
-              variant="outlined"
-              color="error"
-              startIcon={<Logout />}
-              onClick={logout}
-              sx={{
-                borderRadius: 2,
-                px: 3,
-                py: 1.2,
-                fontWeight: 600,
-                textTransform: "none",
-                borderWidth: 2,
-                "&:hover": {
-                  borderWidth: 2,
-                  transform: "translateY(-1px)",
-                  boxShadow: "0 4px 12px rgba(244, 67, 54, 0.2)",
-                },
-                transition: "all 0.3s ease",
-              }}
-            >
-              Logout
-            </Button>
-          </Box>
-        </Box>
-
-        {/* Date Filter */}
-        <LocalizationProvider dateAdapter={AdapterDateFns}>
           <Box
-            sx={{
-              mb: 3,
-              p: 3,
-              bgcolor: "background.paper",
-              borderRadius: 3,
-              boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-              border: "1px solid",
-              borderColor: "grey.200",
-            }}
+            display="flex"
+            flexDirection={{ xs: "column", sm: "row" }}
+            alignItems={{ xs: "stretch", sm: "center" }}
+            justifyContent="space-between"
+            gap={3}
           >
-            <Box display="flex" alignItems="center" gap={2} mb={2}>
-              <Box
+            {/* Action Buttons - Show first on mobile */}
+            <Box
+              display="flex"
+              gap={2}
+              flexWrap="wrap"
+              alignSelf={{ xs: "stretch", sm: "flex-end" }}
+              order={{ xs: 1, sm: 2 }}
+            >
+              <Button
+                variant="contained"
+                startIcon={<Refresh />}
+                onClick={fetchVisitors}
+                disabled={loading}
                 sx={{
-                  width: 4,
-                  height: 20,
-                  bgcolor: "primary.main",
                   borderRadius: 2,
-                }}
-              />
-              <Typography
-                variant="h6"
-                fontWeight="600"
-                sx={{
-                  color: "text.primary",
-                  letterSpacing: "-0.01em",
+                  px: 3,
+                  py: 1.2,
+                  fontWeight: 600,
+                  textTransform: "none",
+                  boxShadow: "0 4px 12px rgba(25, 118, 210, 0.3)",
+                  "&:hover": {
+                    boxShadow: "0 6px 16px rgba(25, 118, 210, 0.4)",
+                    transform: "translateY(-1px)",
+                  },
+                  transition: "all 0.3s ease",
                 }}
               >
-                Filter by Date
-              </Typography>
+                Refresh
+              </Button>
+              <Button
+                variant="outlined"
+                color="error"
+                startIcon={<Logout />}
+                onClick={logout}
+                sx={{
+                  borderRadius: 2,
+                  px: 3,
+                  py: 1.2,
+                  fontWeight: 600,
+                  textTransform: "none",
+                  borderWidth: 2,
+                  "&:hover": {
+                    borderWidth: 2,
+                    transform: "translateY(-1px)",
+                    boxShadow: "0 4px 12px rgba(244, 67, 54, 0.2)",
+                  },
+                  transition: "all 0.3s ease",
+                }}
+              >
+                Logout
+              </Button>
             </Box>
 
-            <Box display="flex" gap={2} flexWrap="wrap" alignItems="center">
-              <FormControl size="small" sx={{ minWidth: 120 }}>
-                {/* <InputLabel>Date Range</InputLabel> */}
-                <TextField
-                  select
-                  size="small"
-                  value={dateFilter}
-                  onChange={(e) => setDateFilter(e.target.value as any)}
-                  label="Date Range"
-                  sx={{ borderRadius: 2 }}
-                >
-                  <MenuItem value="all">All Time</MenuItem>
-                  <MenuItem value="today">Today</MenuItem>
-                  <MenuItem value="week">Last 7 Days</MenuItem>
-                  <MenuItem value="month">Last 30 Days</MenuItem>
-                  <MenuItem value="custom">Custom Range</MenuItem>
-                </TextField>
-              </FormControl>
+            {/* Date Filter Section - Show second on mobile */}
+            <LocalizationProvider dateAdapter={AdapterDateFns}>
+              <Box 
+                display="flex" 
+                gap={2} 
+                flexWrap="wrap" 
+                alignItems="center"
+                order={{ xs: 2, sm: 1 }}
+              >
+                <FormControl size="small" sx={{ minWidth: 120 }}>
+                  <TextField
+                    select
+                    size="small"
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value as any)}
+                    label="Date Range"
+                    sx={{ borderRadius: 2 }}
+                  >
+                    <MenuItem value="all">All Time</MenuItem>
+                    <MenuItem value="today">Today</MenuItem>
+                    <MenuItem value="week">Last 7 Days</MenuItem>
+                    <MenuItem value="month">Last 30 Days</MenuItem>
+                    <MenuItem value="custom">Custom Range</MenuItem>
+                  </TextField>
+                </FormControl>
 
-              {dateFilter === "custom" && (
-                <>
-                  <DatePicker
-                    label="Start Date"
-                    value={customStartDate}
-                    onChange={setCustomStartDate}
-                    slotProps={{
-                      textField: {
-                        size: "small",
-                        sx: { borderRadius: 2, minWidth: 140 },
-                      },
-                    }}
-                  />
-                  <DatePicker
-                    label="End Date"
-                    value={customEndDate}
-                    onChange={setCustomEndDate}
-                    slotProps={{
-                      textField: {
-                        size: "small",
-                        sx: { borderRadius: 2, minWidth: 140 },
-                      },
-                    }}
-                  />
-                </>
-              )}
-            </Box>
+                {dateFilter === "custom" && (
+                  <>
+                    <DatePicker
+                      label="Start Date"
+                      value={customStartDate}
+                      onChange={setCustomStartDate}
+                      slotProps={{
+                        textField: {
+                          size: "small",
+                          sx: { borderRadius: 2, minWidth: 140 },
+                        },
+                      }}
+                    />
+                    <DatePicker
+                      label="End Date"
+                      value={customEndDate}
+                      onChange={setCustomEndDate}
+                      slotProps={{
+                        textField: {
+                          size: "small",
+                          sx: { borderRadius: 2, minWidth: 140 },
+                        },
+                      }}
+                    />
+                  </>
+                )}
+              </Box>
+            </LocalizationProvider>
           </Box>
-        </LocalizationProvider>
+        </Box>
 
         {/* Stats */}
         <Box
