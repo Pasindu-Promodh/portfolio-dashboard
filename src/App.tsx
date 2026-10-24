@@ -1,23 +1,33 @@
 // App.tsx
-import { useAuth, AuthProvider } from "./context/AuthContext";
-import Dashboard from "./pages/Dashboard";
+import { lazy, Suspense } from "react";
+import { CircularProgress } from "@mui/material";
+import { AuthProvider } from "./context/AuthContext";
+import { useAuth } from "./context/useAuth";
 
+// Loaded only after sign-in, so the login screen stays light.
+const Dashboard = lazy(() => import("./pages/Dashboard"));
 
+const centered = {
+  display: "flex",
+  height: "90vh",
+  justifyContent: "center",
+  alignItems: "center",
+} as const;
 
 function AppContent() {
-  const { user, login } = useAuth();
+  const { user, loading, login } = useAuth();
+
+  if (loading) {
+    return (
+      <div style={centered}>
+        <CircularProgress />
+      </div>
+    );
+  }
 
   if (!user) {
     return (
-      <div
-        style={{
-          display: "flex",
-          height: "90vh",
-          // width: "100vw",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
+      <div style={centered}>
         <button
           onClick={login}
           style={{
@@ -44,7 +54,17 @@ function AppContent() {
     );
   }
 
-  return <Dashboard />;
+  return (
+    <Suspense
+      fallback={
+        <div style={centered}>
+          <CircularProgress />
+        </div>
+      }
+    >
+      <Dashboard />
+    </Suspense>
+  );
 }
 
 export default function App() {
@@ -54,14 +74,3 @@ export default function App() {
     </AuthProvider>
   );
 }
-
-
-
-
-// App.ts
-
-// export default function App() {
-//   return (
-//       <Dashboard />
-//   );
-// }

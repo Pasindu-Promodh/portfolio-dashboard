@@ -34,19 +34,101 @@ import {
   ExpandMore,
   People,
 } from "@mui/icons-material";
-import { doc, collection, getDocs, writeBatch } from "firebase/firestore";
-import { db } from "../services/firebase";
-import type { Visitor } from "../types/Visitor";
-import { useAuth } from "../context/AuthContext";
+import {
+  doc,
+  collection,
+  collectionGroup,
+  getDocs,
+  query,
+  where,
+  writeBatch,
+  Timestamp,
+  type DocumentReference,
+} from "firebase/firestore";
+import { db } from "../services/db";
+import type { Visitor, VisitorLog } from "../types/Visitor";
+import { useAuth } from "../context/useAuth";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
 
 type ProjectView = {
-  projectId: string;
+  projectId: number;
   projectName: string;
   count: number;
 };
+
+type DateFilter = "all" | "today" | "week" | "month" | "custom";
+
+const ACTION_KEYS = ["email", "linkedin", "github", "resume"] as const;
+type ActionKey = (typeof ACTION_KEYS)[number];
+type ActionCounts = Record<ActionKey, number>;
+
+const isActionKey = (action: string): action is ActionKey =>
+  (ACTION_KEYS as readonly string[]).includes(action);
+
+type DateRange = { start: Date; end?: Date };
+
+// The time window for the selected filter, or null for "all time".
+function getDateRange(
+  filter: DateFilter,
+  customStart: Date | null,
+  customEnd: Date | null
+): DateRange | null {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  switch (filter) {
+    case "today":
+      return { start: today };
+    case "week":
+      return { start: new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000) };
+    case "month":
+      return {
+        start: new Date(today.getFullYear(), today.getMonth() - 1, today.getDate()),
+      };
+    case "custom": {
+      if (!customStart && !customEnd) return null;
+      const start = customStart
+        ? new Date(customStart.getFullYear(), customStart.getMonth(), customStart.getDate())
+        : new Date(0);
+      const end = customEnd
+        ? new Date(customEnd.getFullYear(), customEnd.getMonth(), customEnd.getDate(), 23, 59, 59, 999)
+        : undefined;
+      return { start, end };
+    }
+    default:
+      return null;
+  }
+}
+
+const inRange = (ts: Timestamp | null, range: DateRange) => {
+  if (!ts) return true;
+  const date = ts.toDate();
+  return date >= range.start && (!range.end || date <= range.end);
+};
+
+const millis = (ts: Timestamp | null | undefined) => ts?.toMillis() ?? 0;
+
+// Firestore batches are capped at 500 writes.
+async function deleteInChunks(refs: DocumentReference[]) {
+  for (let i = 0; i < refs.length; i += 500) {
+    const batch = writeBatch(db);
+    refs.slice(i, i + 500).forEach((ref) => batch.delete(ref));
+    await batch.commit();
+  }
+}
+
+function describeError(err: unknown, fallback: string) {
+  const code = (err as { code?: string }).code;
+  if (code === "permission-denied") {
+    return "This Google account isn't allowed to access the analytics data.";
+  }
+  if (code === "failed-precondition") {
+    return "Firestore index missing: run `firebase deploy --only firestore` in portfolio2.";
+  }
+  return fallback;
+}
 
 const Alert = React.forwardRef<HTMLDivElement, AlertProps>(function Alert(
   props,
@@ -80,84 +162,83 @@ export default function Dashboard() {
   const [expandedVisitors, setExpandedVisitors] = useState<Set<string>>(
     new Set()
   );
-  const [dateFilter, setDateFilter] = useState<
-    "all" | "today" | "week" | "month" | "custom"
-  >("all");
+  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
   const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
+
+  const notify = (message: string, severity: "success" | "error") => {
+    setSnackbarMessage(message);
+    setSnackbarSeverity(severity);
+    setSnackbarOpen(true);
+  };
 
   const fetchVisitors = useCallback(async () => {
     setLoading(true);
     try {
-      const snapshot = await getDocs(collection(db, "visitors"));
+      const range = getDateRange(dateFilter, customStartDate, customEndDate);
+
+      // Two queries total (instead of one per visitor); the date filter
+      // runs in Firestore so only matching logs are read.
+      const logsQuery = range
+        ? query(
+            collectionGroup(db, "logs"),
+            where("timestamp", ">=", Timestamp.fromDate(range.start)),
+            ...(range.end
+              ? [where("timestamp", "<=", Timestamp.fromDate(range.end))]
+              : [])
+          )
+        : collectionGroup(db, "logs");
+
+      const [visitorSnap, logSnap] = await Promise.all([
+        getDocs(collection(db, "visitors")),
+        getDocs(logsQuery),
+      ]);
+
+      const byId = new Map<string, Visitor>();
+      for (const docSnap of visitorSnap.docs) {
+        byId.set(docSnap.id, {
+          id: docSnap.id,
+          firstVisit: docSnap.data().firstVisit ?? null,
+          logs: [],
+        });
+      }
+
       const projectViewCount: Record<string, ProjectView> = {};
-      const actions = { email: 0, linkedin: 0, github: 0, resume: 0 };
+      const actions: ActionCounts = { email: 0, linkedin: 0, github: 0, resume: 0 };
 
-      const visitorData = await Promise.all(
-        snapshot.docs.map(async (docSnap) => {
-          const logsSnap = await getDocs(
-            collection(db, "visitors", docSnap.id, "logs")
-          );
+      for (const logDoc of logSnap.docs) {
+        const visitorRef = logDoc.ref.parent.parent;
+        if (!visitorRef || visitorRef.parent.id !== "visitors") continue;
 
-          // Filter logs by date BEFORE processing them
-          const allLogs = logsSnap.docs.map((log) => ({
-            ...log.data(),
-            action: log.data().action,
-            timestamp: log.data().timestamp,
-            projectId: log.data().projectId,
-            projectName: log.data().projectName,
-          }));
+        const { action, timestamp, projectId, projectName } =
+          logDoc.data() as VisitorLog;
 
-          const filteredLogs = filterByDate(allLogs, "timestamp");
+        let visitor = byId.get(visitorRef.id);
+        if (!visitor) {
+          visitor = { id: visitorRef.id, firstVisit: null, logs: [] };
+          byId.set(visitorRef.id, visitor);
+        }
+        visitor.logs.push({ action, timestamp: timestamp ?? null, projectId, projectName });
 
-          const logs = filteredLogs
-            .map((logData) => {
-              const { action, timestamp, projectId, projectName } = logData;
+        if (action === "project" && projectId && projectName) {
+          const key = `${projectId}|${projectName}`;
+          projectViewCount[key] ??= { projectId, projectName, count: 0 };
+          projectViewCount[key].count++;
+        }
+        if (isActionKey(action)) actions[action]++;
+      }
 
-              // Only count actions and projects from filtered logs
-              if (action === "project" && projectId && projectName) {
-                const key = `${projectId}|${projectName}`;
-                if (!projectViewCount[key]) {
-                  projectViewCount[key] = { projectId, projectName, count: 0 };
-                }
-                projectViewCount[key].count++;
-              }
-
-              if (actions[action as keyof typeof actions] !== undefined) {
-                actions[action as keyof typeof actions]++;
-              }
-
-              return { action, timestamp, projectId, projectName };
-            })
-            .sort((a, b) => {
-              const aTime = a.timestamp?.toDate?.()?.getTime?.() || 0;
-              const bTime = b.timestamp?.toDate?.()?.getTime?.() || 0;
-              return bTime - aTime;
-            });
-
-          return {
-            id: docSnap.id,
-            firstVisit: docSnap.data().firstVisit,
-            logs,
-          };
-        })
+      // A visitor is shown if they were active in the range or first arrived
+      // in it, so the list matches the stats computed from the same logs.
+      const filteredVisitors = [...byId.values()].filter(
+        (v) => !range || v.logs.length > 0 || inRange(v.firstVisit, range)
       );
-
-      // Filter visitors by their first visit date
-      const filteredVisitors = filterByDate(visitorData, "firstVisit");
-
-      // Sort filtered visitors
-      filteredVisitors.sort((a, b) => {
-        const aTime =
-          a.logs[0]?.timestamp?.toDate?.()?.getTime?.() ||
-          a.firstVisit?.toDate?.()?.getTime?.() ||
-          0;
-        const bTime =
-          b.logs[0]?.timestamp?.toDate?.()?.getTime?.() ||
-          b.firstVisit?.toDate?.()?.getTime?.() ||
-          0;
-        return bTime - aTime;
-      });
+      for (const v of filteredVisitors) {
+        v.logs.sort((a, b) => millis(b.timestamp) - millis(a.timestamp));
+      }
+      const lastActivity = (v: Visitor) =>
+        millis(v.logs[0]?.timestamp) || millis(v.firstVisit);
+      filteredVisitors.sort((a, b) => lastActivity(b) - lastActivity(a));
 
       setProjectViews(
         Object.values(projectViewCount).sort((a, b) => b.count - a.count)
@@ -166,80 +247,51 @@ export default function Dashboard() {
       setVisitors(filteredVisitors);
     } catch (error) {
       console.error("Error fetching visitors:", error);
-      setSnackbarMessage("Failed to fetch visitors");
-      setSnackbarSeverity("error");
-      setSnackbarOpen(true);
+      notify(describeError(error, "Failed to fetch visitors"), "error");
     } finally {
       setLoading(false);
     }
-  }, [dateFilter, customStartDate, customEndDate]); // Add dependencies here
+  }, [dateFilter, customStartDate, customEndDate]);
 
-  const deleteVisitor = useCallback(async (visitorId: string) => {
-    const confirmDelete = window.confirm(
-      `Are you sure you want to delete visitor ${visitorId}?`
+  const getLogRefs = async (visitorId: string) =>
+    (await getDocs(collection(db, "visitors", visitorId, "logs"))).docs.map(
+      (logDoc) => logDoc.ref
     );
-    if (!confirmDelete) return;
 
+  // Confirmation happens in the delete dialog.
+  const deleteVisitor = async (visitorId: string) => {
     setLoading(true);
     try {
-      const logsRef = collection(db, "visitors", visitorId, "logs");
-      const logsSnap = await getDocs(logsRef);
-      const batch = writeBatch(db);
-
-      logsSnap.docs.forEach((logDoc) => {
-        batch.delete(logDoc.ref);
-      });
-
-      batch.delete(doc(db, "visitors", visitorId));
-      await batch.commit();
-
+      // Visitor doc goes last so a partial failure never orphans its logs.
+      await deleteInChunks([
+        ...(await getLogRefs(visitorId)),
+        doc(db, "visitors", visitorId),
+      ]);
       setVisitors((prev) => prev.filter((v) => v.id !== visitorId));
-      setSnackbarMessage("Visitor deleted successfully");
-      setSnackbarSeverity("success");
-      setSnackbarOpen(true);
+      notify("Visitor deleted successfully", "success");
     } catch (err) {
       console.error("Error deleting visitor:", err);
-      setSnackbarMessage("Failed to delete visitor");
-      setSnackbarSeverity("error");
-      setSnackbarOpen(true);
+      notify(describeError(err, "Failed to delete visitor"), "error");
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
-  const deleteLogsOnly = useCallback(async (visitorId: string) => {
-    const confirmDelete = window.confirm(
-      `Delete only logs for visitor ${visitorId}?`
-    );
-    if (!confirmDelete) return;
-
+  const deleteLogsOnly = async (visitorId: string) => {
     setLoading(true);
     try {
-      const logsRef = collection(db, "visitors", visitorId, "logs");
-      const logsSnap = await getDocs(logsRef);
-      const batch = writeBatch(db);
-
-      logsSnap.docs.forEach((logDoc) => {
-        batch.delete(logDoc.ref);
-      });
-
-      await batch.commit();
-
+      await deleteInChunks(await getLogRefs(visitorId));
       setVisitors((prev) =>
         prev.map((v) => (v.id === visitorId ? { ...v, logs: [] } : v))
       );
-      setSnackbarMessage("Logs deleted successfully");
-      setSnackbarSeverity("success");
-      setSnackbarOpen(true);
+      notify("Logs deleted successfully", "success");
     } catch (err) {
       console.error("Error deleting logs:", err);
-      setSnackbarMessage("Failed to delete logs");
-      setSnackbarSeverity("error");
-      setSnackbarOpen(true);
+      notify(describeError(err, "Failed to delete logs"), "error");
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
   const handleDeleteChoice = async (choice: "all" | "logs") => {
     if (!selectedVisitorId) return;
@@ -269,55 +321,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchVisitors();
-  }, [fetchVisitors, dateFilter, customStartDate, customEndDate]);
-
-  // Add this helper function to filter data by date:
-  const filterByDate = (items: any[], dateField: string) => {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const monthAgo = new Date(
-      today.getFullYear(),
-      today.getMonth() - 1,
-      today.getDate()
-    );
-
-    return items.filter((item) => {
-      const itemDate = item[dateField]?.toDate?.() || new Date(item[dateField]);
-      if (!itemDate || isNaN(itemDate.getTime())) return true;
-
-      switch (dateFilter) {
-        case "today":
-          return itemDate >= today;
-        case "week":
-          return itemDate >= weekAgo;
-        case "month":
-          return itemDate >= monthAgo;
-        case "custom":
-          if (!customStartDate && !customEndDate) return true;
-          const start = customStartDate
-            ? new Date(
-                customStartDate.getFullYear(),
-                customStartDate.getMonth(),
-                customStartDate.getDate()
-              )
-            : new Date(0);
-          const end = customEndDate
-            ? new Date(
-                customEndDate.getFullYear(),
-                customEndDate.getMonth(),
-                customEndDate.getDate(),
-                23,
-                59,
-                59
-              )
-            : new Date();
-          return itemDate >= start && itemDate <= end;
-        default:
-          return true;
-      }
-    });
-  };
+  }, [fetchVisitors]);
 
   return (
     <Box
@@ -422,7 +426,7 @@ export default function Dashboard() {
                     select
                     size="small"
                     value={dateFilter}
-                    onChange={(e) => setDateFilter(e.target.value as any)}
+                    onChange={(e) => setDateFilter(e.target.value as DateFilter)}
                     label="Date Range"
                     sx={{ borderRadius: 2 }}
                   >
@@ -1022,7 +1026,7 @@ export default function Dashboard() {
         PaperProps={{
           sx: {
             borderRadius: 3,
-            minWidth: 400,
+            minWidth: { xs: "auto", sm: 400 },
           },
         }}
       >
